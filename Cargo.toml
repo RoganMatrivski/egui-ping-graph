@@ -1,0 +1,29 @@
+[package]
+name = "egui-ping-graph"
+version = "0.1.0"
+authors = ["Robin Mauritz <robinmauritzrm@gmail.com>"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+clap = { version = "^4.4", features = ["derive"] }
+color-eyre = { version = "0.6.2", features = ["capture-spantrace"] }
+tracing = "0.1.37"
+tracing-error = "0.2.0"
+tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
+
+egui = "0.25"
+eframe = "0.25"
+egui_plot = "0.25"
+time = "0.3.30"
+tokio = { version = "1.35.1", features = ["full"] }
+rand = "0.8.5"
+async-stream = "0.3.5"
+tokio-stream = "0.1.14"
+futures-core = "0.3.30"
+pinger = "1.1.0"
+futures = "0.3.30"
+
+[profile.dev.package."*"]
+opt-level = 3
