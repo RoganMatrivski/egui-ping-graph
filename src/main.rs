@@ -270,10 +270,11 @@ impl eframe::App for App {
                 .allow_scroll(false)
                 .allow_zoom(false)
                 .legend(egui_plot::Legend::default())
-                .x_axis_formatter(funcs::x_axis_fmt)
-                .y_axis_formatter(funcs::y_axis_fmt)
+                .x_axis_formatter(|val, _, _| funcs::x_axis_fmt(val))
+                .y_axis_formatter(|val, _, _| funcs::y_axis_fmt(val))
                 .x_axis_label("Time")
                 .y_axis_label("Latency")
+                .label_formatter(funcs::xy_label_fmt)
                 .show(ui, |plot_ui| {
                     puffin::profile_scope!("Plot_draw");
 

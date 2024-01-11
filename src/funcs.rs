@@ -1,5 +1,3 @@
-use std::ops::RangeInclusive;
-
 #[allow(dead_code)]
 pub fn reduce_max_f64(acc: f64, el: f64) -> f64 {
     if acc > el {
@@ -38,11 +36,11 @@ pub fn fmt_float_s(val: f64) -> String {
         format!("{val:.2} s")
     } else {
         let millis = val * 1000.0;
-        format!("{millis:.2} ms")
+        format!("{millis:.0} ms")
     }
 }
 
-pub fn x_axis_fmt(val: f64, _charlen: usize, _curr_range: &RangeInclusive<f64>) -> String {
+pub fn x_axis_fmt(val: f64) -> String {
     if val.is_sign_negative() {
         return "".into();
     }
@@ -58,8 +56,31 @@ pub fn x_axis_fmt(val: f64, _charlen: usize, _curr_range: &RangeInclusive<f64>) 
     )
 }
 
-pub fn y_axis_fmt(val: f64, _charlen: usize, _curr_range: &RangeInclusive<f64>) -> String {
+pub fn y_axis_fmt(val: f64) -> String {
     fmt_float_s(val)
+}
+
+pub fn xy_label_fmt(serieslabel: &str, point: &egui_plot::PlotPoint) -> String {
+    let latency_f = point.y;
+    let time_f = point.x;
+
+    let host_label = if !serieslabel.is_empty() {
+        format!("Host: {serieslabel}\n")
+    } else {
+        "".to_string()
+    };
+
+    let lat_time = if time_f > 0.0 {
+        format!(
+            "Latency: {latency}\nTime: {t}",
+            latency = y_axis_fmt(latency_f),
+            t = x_axis_fmt(time_f),
+        )
+    } else {
+        "".to_string()
+    };
+
+    host_label + &lat_time
 }
 
 pub fn mean(data: &[f64]) -> Option<f64> {
