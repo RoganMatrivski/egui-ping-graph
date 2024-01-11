@@ -33,10 +33,11 @@ pub fn hsl_to_rgb(hue: f64, saturation: f64, lightness: f64) -> (u8, u8, u8) {
 
 pub fn fmt_float_s(val: f64) -> String {
     if val > 1.0 {
-        format!("{val:.2} s")
+        let val = (val * 100.0).round() / 100.0;
+        format!("{val} s")
     } else {
-        let millis = val * 1000.0;
-        format!("{millis:.0} ms")
+        let millis = (val * 1000.0 * 100.0).round() / 100.0;
+        format!("{millis} ms")
     }
 }
 
@@ -83,63 +84,22 @@ pub fn xy_label_fmt(serieslabel: &str, point: &egui_plot::PlotPoint) -> String {
     host_label + &lat_time
 }
 
-pub fn mean(data: &[f64]) -> Option<f64> {
-    let sum = data.iter().sum::<f64>();
-    let count = data.len();
-
-    match count {
-        positive if positive > 0 => Some(sum / count as f64),
-        _ => None,
-    }
-}
-
-pub fn std_deviation(data: &[f64]) -> Option<f64> {
-    match (mean(data), data.len()) {
-        (Some(data_mean), count) if count > 0 => {
-            let variance = data
-                .iter()
-                .map(|value| {
-                    let diff = data_mean - *value;
-
-                    diff * diff
-                })
-                .sum::<f64>()
-                / count as f64;
-
-            Some(variance.sqrt())
-        }
-        _ => None,
-    }
-}
-
 pub fn pingstat_from_rawdata(rawdata: &[Option<(f64, f64)>]) -> crate::series::PingStatistics {
+    use statrs::statistics::*;
+
     let data: Vec<f64> = rawdata.iter().filter_map(|x| x.map(|x| x.1)).collect();
 
     let timeouts = rawdata.iter().filter(|x| x.is_none()).count() as u32;
 
-    let p95 = {
-        let mut sorted_data = data.clone();
-        sorted_data.sort_by(|a, b| a.total_cmp(b));
-
-        let percentile_index = ((95.0 / 100.0) * sorted_data.len() as f64) as usize;
-
-        if percentile_index == 0 {
-            0.0
-        } else {
-            sorted_data
-                .get(percentile_index - 1)
-                .cloned()
-                .unwrap_or(0.0)
-        }
-    };
+    let mut statdata = Data::new(data);
 
     crate::series::PingStatistics {
-        last: *data.last().unwrap_or(&0.0),
-        min: *data.iter().min_by(|a, b| a.total_cmp(b)).unwrap_or(&0.0),
-        max: *data.iter().max_by(|a, b| a.total_cmp(b)).unwrap_or(&0.0),
-        avg: mean(&data).unwrap_or(0.0),
-        jitter: std_deviation(&data).unwrap_or(0.0),
-        p95,
+        last: *statdata.iter().last().unwrap_or(&0.0),
+        min: statdata.min(),
+        max: statdata.max(),
+        avg: statdata.mean().unwrap_or(0.0),
+        jitter: statdata.std_dev().unwrap_or(0.0),
+        p95: statdata.percentile(95),
         timeouts,
     }
 }
