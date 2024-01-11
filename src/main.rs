@@ -2,6 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use color_eyre::eyre::Report;
+use rand::Rng;
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
@@ -154,6 +155,7 @@ fn main() -> Result<(), Report> {
         let _enter = rt.enter();
         let timeseries_hashclone = state.timeseries_hash.clone();
         let available_idxcolor = state.color_preset_shfidx.clone();
+        let color_preset_len = state.color_preset.len() as u8;
 
         std::thread::spawn(move || {
             rt.block_on(async {
@@ -165,7 +167,9 @@ fn main() -> Result<(), Report> {
                     .into_iter()
                     .map(|target| {
                         let timeseries_hashref = timeseries_hashclone.clone();
-                        let idxcolor = available_idxcolor.pop().unwrap_or(0);
+                        let idxcolor = available_idxcolor
+                            .pop()
+                            .unwrap_or_else(|| rand::thread_rng().gen_range(0..color_preset_len));
 
                         tokio::spawn(async move {
                             app_pinger::run_pinger(
