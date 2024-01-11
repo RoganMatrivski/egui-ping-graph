@@ -35,7 +35,7 @@ pub fn run_pinger(
                     PingResult::PingExited(e, stderr) => {
                         bail!("There was an error running ping: {e}\nStderr: {stderr}\n");
                     }
-                })
+                });
             } else {
                 ts_hash.insert(target.clone(), Series::with_idxcolor(idxcolor));
             }

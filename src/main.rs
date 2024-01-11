@@ -17,8 +17,14 @@ mod init;
 mod series;
 mod statics;
 
-const DEFAULT_HISTORY_SECS: f64 = 10.0;
+// const DEFAULT_HISTORY_SECS: f64 = 10.0;
 const DEFAULT_OFFSET: f64 = 1.0;
+const MAX_HISTORY_SECS: f64 = 120.0;
+
+const MAX_FPS: u32 = 30;
+const MAX_FRAME_SLEEP: f64 = 1000.0 / MAX_FPS as f64;
+const MAX_FRAME_SLEEP_DUR: std::time::Duration =
+    std::time::Duration::from_millis(MAX_FRAME_SLEEP as u64);
 
 pub struct App {
     // t_since_start: time::Instant,
@@ -26,6 +32,10 @@ pub struct App {
     timeseries_hash: Arc<Mutex<HashMap<String, Series>>>,
     color_preset: Vec<egui::Color32>,
     color_preset_shfidx: Vec<u8>,
+
+    history_window: f64,
+
+    top_padding: f64,
 }
 
 impl Default for App {
@@ -48,10 +58,14 @@ impl Default for App {
             timeseries_hash: Arc::new(Mutex::new(HashMap::new())),
             // t_since_start: time::Instant::now(),
             // datetime_since_start: time::OffsetDateTime::now_utc(),
+            history_window: 10.0,
+
+            top_padding: 0.01,
         }
     }
 }
 
+#[allow(dead_code)]
 impl App {
     fn get_sec_since_start(&self) -> f64 {
         (time::Instant::now() - *statics::I_START.get().unwrap()).as_seconds_f64()
@@ -63,6 +77,19 @@ impl App {
                 .iter()
                 .map(|x| x.1)
                 .map(|x| x.get_highest_value())
+                .max_by(|a, b| a.total_cmp(b))
+                .unwrap_or(0.0)
+        } else {
+            0.0
+        }
+    }
+
+    fn get_highest_value_youngerthan(&self, time: f64) -> f64 {
+        if let Ok(values) = self.timeseries_hash.clone().lock() {
+            values
+                .iter()
+                .map(|x| x.1)
+                .map(|x| x.get_highest_value_youngerthan(time))
                 .max_by(|a, b| a.total_cmp(b))
                 .unwrap_or(0.0)
         } else {
@@ -107,14 +134,14 @@ fn main() -> Result<(), Report> {
     {
         // OnceCell statics init
 
-        statics::DATETIME_START.get_or_init(|| time::OffsetDateTime::now_utc());
-        statics::I_START.get_or_init(|| time::Instant::now());
+        statics::DATETIME_START.get_or_init(time::OffsetDateTime::now_utc);
+        statics::I_START.get_or_init(time::Instant::now);
     }
 
     let options = eframe::NativeOptions::default();
     let state = Box::<App>::default();
 
-    let targets: Vec<_> = vec!["8.8.8.8", "8.8.4.4", "9.9.9.9"]
+    let targets: Vec<_> = vec!["8.8.8.8", "9.9.9.9", "1.1.1.1"]
         .into_iter()
         .map(String::from)
         .collect();
@@ -180,13 +207,61 @@ fn main() -> Result<(), Report> {
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         puffin::profile_scope!("update");
+        let frame_istart = std::time::Instant::now();
         let f_elapsed = self.get_sec_since_start() / 1.0;
-        // let datetime_since_start = statics::DATETIME_START.clone();
+        let start_time = *statics::I_START.get().unwrap();
+        let highest_value = self.get_highest_value_youngerthan(
+            (frame_istart - start_time).as_seconds_f64() - self.history_window,
+        );
 
         ctx.set_visuals(egui::Visuals::dark());
 
         egui::CentralPanel::default().show(ctx, |ui| {
             puffin::profile_scope!("CentralPanel_draw");
+
+            egui::CollapsingHeader::new("Options")
+                .default_open(false)
+                .show_unindented(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label("Window size");
+                        ui.add(egui::Slider::new(
+                            &mut self.history_window,
+                            5.0..=MAX_HISTORY_SECS,
+                        ));
+                    });
+
+                    egui::CollapsingHeader::new("Extra Options")
+                        .default_open(false)
+                        .show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                ui.label("Top Padding");
+                                ui.add(egui::Slider::new(&mut self.top_padding, 0.05..=2.0));
+                            })
+                        });
+                });
+
+            if let Ok(asdf) = self.timeseries_hash.lock() {
+                egui::CollapsingHeader::new("Details")
+                    .default_open(true)
+                    .show_unindented(ui, |ui| {
+                        egui::Grid::new("pingmeasurements").show(ui, |ui| {
+                            for (target, series) in asdf.iter() {
+                                let stats = &series.stats;
+
+                                ui.label(target);
+
+                                ui.label(format!("last: {}", funcs::fmt_float_s(stats.last)));
+                                ui.label(format!("min: {}", funcs::fmt_float_s(stats.min)));
+                                ui.label(format!("max: {}", funcs::fmt_float_s(stats.max)));
+                                ui.label(format!("avg: {}", funcs::fmt_float_s(stats.avg)));
+                                ui.label(format!("jtr: {}", funcs::fmt_float_s(stats.jitter)));
+                                ui.label(format!("p95: {}", funcs::fmt_float_s(stats.p95)));
+                                ui.label(format!("t/0: {}", stats.timeouts));
+                                ui.end_row();
+                            }
+                        })
+                    });
+            }
 
             let plot = egui_plot::Plot::new("mesurment");
             plot.allow_boxed_zoom(false)
@@ -195,29 +270,10 @@ impl eframe::App for App {
                 .allow_scroll(false)
                 .allow_zoom(false)
                 .legend(egui_plot::Legend::default())
-                .y_axis_formatter(|val, _, _| {
-                    if val > 1.0 {
-                        format!("{val} s")
-                    } else {
-                        let millis = val * 1000.0;
-                        format!("{millis} ms")
-                    }
-                })
-                .x_axis_formatter(|val, _, _| {
-                    if val.is_sign_negative() {
-                        return "".into();
-                    }
-
-                    let datetime_since_start = *statics::DATETIME_START.get().unwrap();
-                    let asd = datetime_since_start + time::Duration::seconds_f64(val);
-
-                    format!(
-                        "{:0>2}:{:0>2}:{:0>2}",
-                        asd.hour(),
-                        asd.minute(),
-                        asd.second()
-                    )
-                })
+                .x_axis_formatter(funcs::x_axis_fmt)
+                .y_axis_formatter(funcs::y_axis_fmt)
+                .x_axis_label("Time")
+                .y_axis_label("Latency")
                 .show(ui, |plot_ui| {
                     puffin::profile_scope!("Plot_draw");
 
@@ -229,7 +285,7 @@ impl eframe::App for App {
                                 plot_ui.line(
                                     egui_plot::Line::new(points)
                                         .color(self.color_preset[series.linecol_idx as usize])
-                                        .width(4.0)
+                                        .width(3.0)
                                         .fill(0.0)
                                         .name(target),
                                 )
@@ -238,11 +294,18 @@ impl eframe::App for App {
                     }
 
                     plot_ui.set_plot_bounds(egui_plot::PlotBounds::from_min_max(
-                        [f_elapsed - DEFAULT_OFFSET - DEFAULT_HISTORY_SECS, 0.0],
-                        [f_elapsed - DEFAULT_OFFSET, self.get_highest_value() + 0.05],
+                        [f_elapsed - DEFAULT_OFFSET - self.history_window, 0.0],
+                        [f_elapsed - DEFAULT_OFFSET, highest_value + self.top_padding],
                     ));
                 })
         });
+
+        {
+            puffin::profile_scope!("fpslimit_sleep");
+
+            let threadsleep_dur = MAX_FRAME_SLEEP_DUR - frame_istart.elapsed();
+            std::thread::sleep(threadsleep_dur);
+        }
 
         ctx.request_repaint();
         puffin::GlobalProfiler::lock().new_frame();
