@@ -31,15 +31,8 @@ impl Default for Series {
     }
 }
 
-#[allow(dead_code)]
+// #[allow(dead_code)]
 impl Series {
-    pub fn with_hexcolor(hexcolor: &str) -> Self {
-        Self {
-            linecol: egui::Color32::from_hex(hexcolor).unwrap(), // TODO: Handle this conversion error
-            ..Default::default()
-        }
-    }
-
     pub fn with_idxcolor(idx: u8) -> Self {
         Self {
             linecol_idx: idx,
@@ -90,17 +83,8 @@ impl Series {
         funcs::pingstat_from_rawdata(&self.raw)
     }
 
-    pub fn get_pingstat_youngerthan(&self, time: f64) -> PingStatistics {
-        let rawdata = self.get_younger_than(time);
-        funcs::pingstat_from_rawdata(rawdata)
-    }
-
     pub fn update_pingstat(&mut self) {
         self.stats = self.get_pingstat();
-    }
-
-    pub fn update_pingstat_youngerthan(&mut self, time: f64) {
-        self.stats = self.get_pingstat_youngerthan(time);
     }
 
     pub fn splitted_to_plotpoints(&self) -> Vec<egui_plot::PlotPoints> {
