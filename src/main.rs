@@ -16,6 +16,7 @@ mod app_pinger;
 mod funcs;
 mod init;
 mod series;
+mod series_new;
 mod statics;
 
 // const DEFAULT_HISTORY_SECS: f64 = 10.0;
@@ -226,7 +227,7 @@ impl eframe::App for App {
             egui::CollapsingHeader::new("Options")
                 .default_open(false)
                 .show_unindented(ui, |ui| {
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         ui.label("Window size");
                         ui.add(egui::Slider::new(
                             &mut self.history_window,
